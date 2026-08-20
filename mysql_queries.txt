@@ -1,8 +1,6 @@
--- Database Creation
 CREATE DATABASE IF NOT EXISTS shopsight;
 USE shopsight;
 
--- Table 1: User Authentication
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -10,7 +8,6 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255) NOT NULL
 );
 
--- Table 2: Product Inventory Management
 CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -21,7 +18,6 @@ CREATE TABLE IF NOT EXISTS products (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Table 3: Sales Records & Financial Logs
 CREATE TABLE IF NOT EXISTS sales (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
