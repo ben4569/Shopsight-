@@ -1,0 +1,33 @@
+ShopSight – Store & Inventory Management System
+
+Synopsis
+
+ShopSight is a Python desktop application that enables small businesses to efficiently manage their products, inventory, sales, and overall business processes from a single place while minimizing manual efforts and potential human errors.
+
+The application is built using Python language, Tkinter, MySQL, Werkzeug, CSV module, and Matplotlib (where applicable).
+
+In addition, the following features were implemented:
+
+User Accounts
+
+In ShopSight, store owners can manage their personal accounts and protect their data by logging in with a secret password (never stored as-is). Werkzeug and parameterized queries are used to ensure that sensitive information, such as passwords, is adequately protected and that unauthorized access attempts, such as SQL injection, are rejected. At the same time, account-related information is linked to the user’s business data.
+
+Products
+
+Users can add products to their inventory by entering particular details, such as the desired name, cost, selling price, and quantity. Products can also be imported via CSV files to reduce the volume of manual input required. In addition, the product management feature allows owners to keep track of supplies and know which items are in short supply (i.e., their current quantity is low).
+
+Sales
+
+Through the Sales panel, store owners can make sales by choosing a specific product and specifying the number of items. Before finalizing a purchase, the application cross-checks the given quantity with the available inventory to ensure that no sales exceed the current supply. After a sale is complete, the selected number of items is automatically deducted from the general stock to avoid inconsistencies.
+
+Dashboard
+
+The dashboard feature allows users to obtain an overview of their business performance and current inventory. It does so by demonstrating the relevant numbers, such as the total amount of money from sales, costs, and profits, and the number of items sold, along with the available and low-supply inventory. To retrieve this information, the application uses aggregate functions such as SUM and COUNT. It is possible to visualize some of the data using graphical plots and charts.
+
+Database
+
+ShopSight uses MySQL as its backend and implements a simple schema that involves three main tables (users, products, sales) and several foreign keys. Products and sales are linked to users, which enables owners to monitor their individual performance. Lastly, data validation and error-handling mechanisms are in place to ensure that no invalid operations, such as inaccurate sales, are made.
+
+AI Use
+
+Various AI tools were used to build this application, primarily to generate Python code, debug existing code snippets, design the database schema, and implement additional features. All suggestions were manually reviewed and modified before being integrated into the project.
