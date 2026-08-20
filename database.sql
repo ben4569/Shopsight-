@@ -1,37 +1,58 @@
-CREATE DATABASE IF NOT EXISTS INVENTORY;
-USE INVENTORY;
+CREATE DATABASE IF NOT EXISTS shopsight;
+USE shopsight;
 
-CREATE TABLE IF NOT EXISTS business_profile (
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    business_name VARCHAR(255) NOT NULL,
-    business_type VARCHAR(100) NOT NULL,
-    years_in_operation INT NOT NULL,
-    currency VARCHAR(10) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(200) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS businesses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    name VARCHAR(150) NOT NULL,
+    type VARCHAR(100) NOT NULL,
+    years INT DEFAULT 0,
+    currency VARCHAR(10) DEFAULT 'INR',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    cost DECIMAL(10,2) NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
+    user_id INT NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    cost DECIMAL(12,2) NOT NULL,
+    price DECIMAL(12,2) NOT NULL,
     quantity INT NOT NULL,
-    expiry_date DATE NOT NULL,
-    in_shop TINYINT(1) NOT NULL DEFAULT 0,
-    current_units INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_products_name (name),
-    INDEX idx_products_shop (in_shop)
+    stock INT NOT NULL,
+    expiry DATE NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS sales (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    product_name VARCHAR(150) NOT NULL,
+    units INT NOT NULL,
+    price DECIMAL(12,2) NOT NULL,
+    cost DECIMAL(12,2) NOT NULL,
     sale_date DATE NOT NULL,
-    product_name VARCHAR(255) NOT NULL,
-    units_sold INT NOT NULL,
-    sale_price DECIMAL(10,2) NOT NULL,
-    unit_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_sales_date (sale_date),
-    INDEX idx_sales_product (product_name)
+    FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+        ON DELETE RESTRICT
 );
+
+CREATE INDEX idx_products_user
+ON products(user_id);
+
+CREATE INDEX idx_sales_user
+ON sales(user_id);
+
+CREATE INDEX idx_sales_date
+ON sales(sale_date);
