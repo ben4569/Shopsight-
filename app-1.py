@@ -1,964 +1,617 @@
-import os
 import csv
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import mysql.connector
-from werkzeug.security import generate_password_hash, check_password_hash
+import customtkinter as ctk
+from tkinter import filedialog,messagebox
+from werkzeug.security import generate_password_hash,check_password_hash
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from PIL import Image
+from database import get_connection
 
-DB = {
-    "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.getenv("MYSQL_PORT", "3306")),
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", ""),
-    "database": os.getenv("MYSQL_DATABASE", "shopsight")
-}
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-def connect():
-    return mysql.connector.connect(**DB)
+BG="#0f172a"
+CARD="#1e293b"
 
-def setup():
-    c = mysql.connector.connect(
-        host=DB["host"], port=DB["port"],
-        user=DB["user"], password=DB["password"]
-    )
-    q = c.cursor()
-    q.execute("CREATE DATABASE IF NOT EXISTS shopsight")
-    q.close()
-    c.close()
-
-    c = connect()
-    q = c.cursor()
-
-    q.execute("""
-        CREATE TABLE IF NOT EXISTS users(
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            email VARCHAR(200) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL
-        )
-    """)
-
-    q.execute("""
-        CREATE TABLE IF NOT EXISTS businesses(
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT UNIQUE NOT NULL,
-            name VARCHAR(150) NOT NULL,
-            type VARCHAR(100) NOT NULL,
-            years INT DEFAULT 0,
-            currency VARCHAR(10) DEFAULT 'INR',
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """)
-
-    q.execute("""
-        CREATE TABLE IF NOT EXISTS products(
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            name VARCHAR(150) NOT NULL,
-            cost DECIMAL(12,2) NOT NULL,
-            price DECIMAL(12,2) NOT NULL,
-            quantity INT NOT NULL,
-            stock INT NOT NULL,
-            expiry DATE NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """)
-
-    q.execute("""
-        CREATE TABLE IF NOT EXISTS sales(
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            product_id INT NOT NULL,
-            product_name VARCHAR(150) NOT NULL,
-            units INT NOT NULL,
-            price DECIMAL(12,2) NOT NULL,
-            cost DECIMAL(12,2) NOT NULL,
-            sale_date DATE NOT NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """)
-
-    c.commit()
-    q.close()
-    c.close()
-
-
-class ShopSight:
-    def __init__(self, root):
-        self.root = root
+class App:
+    def __init__(self,root):
+        self.root=root
         self.root.title("ShopSight")
-        self.root.geometry("1050x700")
-        self.root.configure(bg="#0f172a")
-        self.user_id = None
-        self.business = None
+        self.root.geometry("1100x700")
+        self.user=None
+        self.business=None
         self.login()
 
     def clear(self):
-        for w in self.root.winfo_children():
-            w.destroy()
-
-    def heading(self, text):
-        tk.Label(
-            self.root,
-            text=text,
-            bg="#0f172a",
-            fg="white",
-            font=("Arial", 25, "bold")
-        ).pack(pady=20)
-
-    def entry(self, parent, text):
-        tk.Label(
-            parent,
-            text=text,
-            bg=parent["bg"],
-            fg="#cbd5e1"
-        ).pack(anchor="w")
-
-        e = tk.Entry(
-            parent,
-            bg="#0f172a",
-            fg="white",
-            insertbackground="white",
-            relief="flat"
-        )
-        e.pack(fill="x", ipady=7, pady=(3, 10))
-        return e
-
-    def button(self, parent, text, command):
-        tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg="#2563eb",
-            fg="white",
-            activebackground="#1d4ed8",
-            activeforeground="white",
-            relief="flat",
-            padx=15,
-            pady=8
-        ).pack(pady=5)
+        for x in self.root.winfo_children():
+            x.destroy()
 
     def login(self):
         self.clear()
 
-        box = tk.Frame(
-            self.root,
-            bg="#1e293b",
-            padx=35,
-            pady=30
-        )
-        box.place(
-            relx=.5,
-            rely=.5,
-            anchor="center",
-            width=390
-        )
+        box=ctk.CTkFrame(self.root,width=400,height=450)
+        box.place(relx=.5,rely=.5,anchor="center")
 
-        tk.Label(
-            box,
-            text="ShopSight",
-            bg="#1e293b",
-            fg="#60a5fa",
-            font=("Arial", 28, "bold")
-        ).pack(pady=(0, 8))
+        ctk.CTkLabel(box,text="ShopSight",font=("Arial",30,"bold")).pack(pady=35)
+        ctk.CTkLabel(box,text="Smarter decisions for your shop").pack()
 
-        tk.Label(
-            box,
-            text="Smarter decisions for your shop",
-            bg="#1e293b",
-            fg="#94a3b8"
-        ).pack(pady=(0, 20))
+        email=ctk.CTkEntry(box,placeholder_text="Email",width=320)
+        email.pack(pady=12)
 
-        email = self.entry(box, "Email")
-        password = self.entry(box, "Password")
-        password.config(show="*")
+        password=ctk.CTkEntry(box,placeholder_text="Password",show="*",width=320)
+        password.pack(pady=12)
 
         def login():
             try:
-                c = connect()
-                q = c.cursor(dictionary=True)
+                db=get_connection()
+                cur=db.cursor(dictionary=True)
+                cur.execute("SELECT * FROM users WHERE email=%s",(email.get().lower(),))
+                user=cur.fetchone()
+                cur.close()
+                db.close()
 
-                q.execute(
-                    "SELECT * FROM users WHERE email=%s",
-                    (email.get().strip().lower(),)
-                )
-
-                user = q.fetchone()
-                q.close()
-                c.close()
-
-                if not user or not check_password_hash(
-                    user["password"], password.get()
-                ):
-                    messagebox.showerror(
-                        "Login Failed",
-                        "Incorrect email or password."
-                    )
+                if not user or not check_password_hash(user["password"],password.get()):
+                    messagebox.showerror("Login","Wrong email or password")
                     return
 
-                self.user_id = user["id"]
-                self.business = self.get_business()
-
-                if self.business:
-                    self.dashboard()
-                else:
-                    self.onboarding()
+                self.user=user
+                self.business=self.get_business()
+                self.dashboard() if self.business else self.onboarding()
 
             except Exception as e:
-                messagebox.showerror("Database Error", str(e))
+                messagebox.showerror("Database Error",str(e))
 
-        self.button(box, "Login", login)
-        self.button(box, "Create Account", self.signup)
+        ctk.CTkButton(box,text="Login",command=login,width=320).pack(pady=12)
+        ctk.CTkButton(box,text="Create Account",command=self.signup,width=320).pack(pady=5)
 
     def signup(self):
         self.clear()
 
-        box = tk.Frame(
-            self.root,
-            bg="#1e293b",
-            padx=35,
-            pady=25
-        )
-        box.place(
-            relx=.5,
-            rely=.5,
-            anchor="center",
-            width=400
-        )
+        box=ctk.CTkFrame(self.root,width=420,height=520)
+        box.place(relx=.5,rely=.5,anchor="center")
 
-        tk.Label(
-            box,
-            text="Create Account",
-            bg="#1e293b",
-            fg="#60a5fa",
-            font=("Arial", 23, "bold")
-        ).pack(pady=(0, 15))
+        ctk.CTkLabel(box,text="Create Account",font=("Arial",27,"bold")).pack(pady=30)
 
-        name = self.entry(box, "Full Name")
-        email = self.entry(box, "Email")
-        password = self.entry(box, "Password")
-        confirm = self.entry(box, "Confirm Password")
+        name=ctk.CTkEntry(box,placeholder_text="Full Name",width=330)
+        name.pack(pady=10)
 
-        password.config(show="*")
-        confirm.config(show="*")
+        email=ctk.CTkEntry(box,placeholder_text="Email",width=330)
+        email.pack(pady=10)
+
+        password=ctk.CTkEntry(box,placeholder_text="Password",show="*",width=330)
+        password.pack(pady=10)
+
+        confirm=ctk.CTkEntry(box,placeholder_text="Confirm Password",show="*",width=330)
+        confirm.pack(pady=10)
 
         def create():
-            name_value = name.get().strip()
-            email_value = email.get().strip().lower()
-            password_value = password.get()
-
-            if not name_value or not email_value:
-                messagebox.showerror("Error", "Fill in all fields.")
+            if not name.get() or not email.get() or not password.get():
+                messagebox.showerror("Error","Fill all fields")
                 return
 
-            if len(password_value) < 6:
-                messagebox.showerror(
-                    "Error",
-                    "Password must have at least 6 characters."
-                )
+            if len(password.get())<6:
+                messagebox.showerror("Error","Password must have 6 characters")
                 return
 
-            if password_value != confirm.get():
-                messagebox.showerror(
-                    "Error",
-                    "Passwords do not match."
-                )
+            if password.get()!=confirm.get():
+                messagebox.showerror("Error","Passwords do not match")
                 return
 
             try:
-                c = connect()
-                q = c.cursor()
-
-                q.execute(
-                    """
-                    INSERT INTO users(name,email,password)
-                    VALUES(%s,%s,%s)
-                    """,
+                db=get_connection()
+                cur=db.cursor()
+                cur.execute(
+                    "INSERT INTO users(name,email,password) VALUES(%s,%s,%s)",
                     (
-                        name_value,
-                        email_value,
-                        generate_password_hash(password_value)
+                        name.get().strip(),
+                        email.get().strip().lower(),
+                        generate_password_hash(password.get())
                     )
                 )
+                db.commit()
+                cur.close()
+                db.close()
 
-                self.user_id = q.lastrowid
-                c.commit()
-
-                q.close()
-                c.close()
+                db=get_connection()
+                cur=db.cursor(dictionary=True)
+                cur.execute("SELECT * FROM users WHERE email=%s",(email.get().lower(),))
+                self.user=cur.fetchone()
+                cur.close()
+                db.close()
 
                 self.onboarding()
 
-            except mysql.connector.IntegrityError:
-                messagebox.showerror(
-                    "Error",
-                    "An account with this email already exists."
-                )
+            except Exception:
+                messagebox.showerror("Error","Email already exists")
 
-            except Exception as e:
-                messagebox.showerror("Database Error", str(e))
-
-        self.button(box, "Create Account", create)
-        self.button(box, "Back to Login", self.login)
+        ctk.CTkButton(box,text="Create Account",command=create,width=330).pack(pady=15)
+        ctk.CTkButton(box,text="Back",command=self.login,width=330).pack()
 
     def get_business(self):
-        c = connect()
-        q = c.cursor(dictionary=True)
-
-        q.execute(
+        db=get_connection()
+        cur=db.cursor(dictionary=True)
+        cur.execute(
             "SELECT * FROM businesses WHERE user_id=%s",
-            (self.user_id,)
+            (self.user["id"],)
         )
-
-        business = q.fetchone()
-
-        q.close()
-        c.close()
-
-        return business
+        data=cur.fetchone()
+        cur.close()
+        db.close()
+        return data
 
     def onboarding(self):
         self.clear()
 
-        box = tk.Frame(
-            self.root,
-            bg="#1e293b",
-            padx=35,
-            pady=25
-        )
-        box.place(
-            relx=.5,
-            rely=.5,
-            anchor="center",
-            width=430
-        )
+        box=ctk.CTkFrame(self.root,width=450,height=520)
+        box.place(relx=.5,rely=.5,anchor="center")
 
-        tk.Label(
-            box,
-            text="Business Setup",
-            bg="#1e293b",
-            fg="#60a5fa",
-            font=("Arial", 23, "bold")
-        ).pack(pady=(0, 15))
+        ctk.CTkLabel(box,text="Business Setup",font=("Arial",27,"bold")).pack(pady=30)
 
-        name = self.entry(box, "Business Name")
-        business_type = self.entry(box, "Business Type")
-        years = self.entry(box, "Years in Operation")
-        currency = self.entry(box, "Currency")
+        name=ctk.CTkEntry(box,placeholder_text="Business Name",width=350)
+        name.pack(pady=10)
 
-        currency.insert(0, "INR")
+        typ=ctk.CTkEntry(box,placeholder_text="Business Type",width=350)
+        typ.pack(pady=10)
+
+        years=ctk.CTkEntry(box,placeholder_text="Years In Operation",width=350)
+        years.pack(pady=10)
+
+        currency=ctk.CTkEntry(box,placeholder_text="Currency",width=350)
+        currency.insert(0,"INR")
+        currency.pack(pady=10)
 
         def save():
             try:
-                name_value = name.get().strip()
-                type_value = business_type.get().strip()
-                years_value = int(years.get() or 0)
-                currency_value = currency.get().strip().upper()
+                y=int(years.get() or 0)
 
-                if not name_value or not type_value:
+                if not name.get() or not typ.get() or y<0:
                     raise ValueError
 
-                if years_value < 0:
-                    raise ValueError
+                db=get_connection()
+                cur=db.cursor()
 
-                if not currency_value:
-                    raise ValueError
-
-                c = connect()
-                q = c.cursor()
-
-                q.execute(
+                cur.execute(
                     """
                     INSERT INTO businesses
                     (user_id,name,type,years,currency)
                     VALUES(%s,%s,%s,%s,%s)
                     """,
                     (
-                        self.user_id,
-                        name_value,
-                        type_value,
-                        years_value,
-                        currency_value
+                        self.user["id"],
+                        name.get(),
+                        typ.get(),
+                        y,
+                        currency.get().upper()
                     )
                 )
 
-                c.commit()
-                q.close()
-                c.close()
+                db.commit()
+                cur.close()
+                db.close()
 
-                self.business = self.get_business()
+                self.business=self.get_business()
                 self.dashboard()
 
             except Exception:
-                messagebox.showerror(
-                    "Error",
-                    "Enter valid business details."
-                )
+                messagebox.showerror("Error","Enter valid details")
 
-        self.button(box, "Save and Continue", save)
+        ctk.CTkButton(box,text="Continue",command=save,width=350).pack(pady=20)
 
     def menu(self):
-        bar = tk.Frame(self.root, bg="#111827")
+        bar=ctk.CTkFrame(self.root,height=60)
         bar.pack(fill="x")
 
-        buttons = [
-            ("Dashboard", self.dashboard),
-            ("Inventory", self.inventory),
-            ("Sales", self.sales),
-            ("Analytics", self.analytics),
-            ("Logout", self.logout)
-        ]
+        ctk.CTkLabel(
+            bar,
+            text="ShopSight",
+            font=("Arial",22,"bold")
+        ).pack(side="left",padx=20)
 
-        for text, command in buttons:
-            tk.Button(
-                bar,
-                text=text,
-                command=command,
-                bg="#1e293b",
-                fg="white",
-                activebackground="#2563eb",
-                activeforeground="white",
-                relief="flat",
-                padx=14,
-                pady=8
-            ).pack(side="left", padx=3, pady=7)
+        for text,command in [
+            ("Dashboard",self.dashboard),
+            ("Inventory",self.inventory),
+            ("Sales",self.sales),
+            ("Analytics",self.analytics)
+        ]:
+            ctk.CTkButton(
+                bar,text=text,command=command,
+                width=110,fg_color="transparent"
+            ).pack(side="left",padx=3)
+
+        ctk.CTkButton(
+            bar,text="Logout",command=self.login,
+            width=90,fg_color="#991b1b"
+        ).pack(side="right",padx=15)
 
     def dashboard(self):
         self.clear()
         self.menu()
-        self.heading("Business Dashboard")
 
-        c = connect()
-        q = c.cursor()
+        frame=ctk.CTkScrollableFrame(self.root)
+        frame.pack(fill="both",expand=True)
 
-        q.execute(
+        ctk.CTkLabel(
+            frame,
+            text="Business Dashboard",
+            font=("Arial",28,"bold")
+        ).pack(anchor="w",padx=25,pady=(25,5))
+
+        ctk.CTkLabel(
+            frame,
+            text=f"Welcome to {self.business['name']}",
+            text_color="#94a3b8"
+        ).pack(anchor="w",padx=25)
+
+        db=get_connection()
+        cur=db.cursor()
+
+        cur.execute(
             """
             SELECT
             COALESCE(SUM(units*price),0),
             COALESCE(SUM((price-cost)*units),0),
             COALESCE(SUM(units),0)
-            FROM sales
-            WHERE user_id=%s
+            FROM sales WHERE user_id=%s
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
 
-        revenue, profit, units = q.fetchone()
+        revenue,profit,units=cur.fetchone()
 
-        q.execute(
+        cur.execute(
             "SELECT COUNT(*) FROM products WHERE user_id=%s",
-            (self.user_id,)
+            (self.user["id"],)
         )
-        products = q.fetchone()[0]
+        products=cur.fetchone()[0]
 
-        q.execute(
+        cur.execute(
             """
             SELECT COUNT(*) FROM products
             WHERE user_id=%s AND stock<=5
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
-        low = q.fetchone()[0]
+        low=cur.fetchone()[0]
 
-        q.close()
-        c.close()
+        cur.close()
+        db.close()
 
-        tk.Label(
-            self.root,
-            text=f"Welcome to {self.business['name']}",
-            bg="#0f172a",
-            fg="#94a3b8",
-            font=("Arial", 13)
-        ).pack()
+        cards=ctk.CTkFrame(frame,fg_color="transparent")
+        cards.pack(fill="x",padx=20,pady=25)
 
-        frame = tk.Frame(self.root, bg="#0f172a")
-        frame.pack(fill="x", padx=30, pady=30)
-
-        cards = [
-            ("Revenue", self.money(revenue)),
-            ("Profit", self.money(profit)),
-            ("Products", products),
-            ("Low Stock", low)
+        data=[
+            ("Revenue",self.money(revenue)),
+            ("Profit",self.money(profit)),
+            ("Products",products),
+            ("Low Stock",low)
         ]
 
-        for name, value in cards:
-            card = tk.Frame(
-                frame,
-                bg="#1e293b",
-                padx=20,
-                pady=20
-            )
-            card.pack(
-                side="left",
-                fill="both",
-                expand=True,
-                padx=7
-            )
+        for name,value in data:
+            box=ctk.CTkFrame(cards,fg_color=CARD)
+            box.pack(side="left",fill="both",expand=True,padx=5)
 
-            tk.Label(
-                card,
-                text=name,
-                bg="#1e293b",
-                fg="#94a3b8"
-            ).pack(anchor="w")
+            ctk.CTkLabel(
+                box,text=name,text_color="#94a3b8"
+            ).pack(anchor="w",padx=15,pady=(15,5))
 
-            tk.Label(
-                card,
-                text=value,
-                bg="#1e293b",
-                fg="white",
-                font=("Arial", 19, "bold")
-            ).pack(anchor="w", pady=8)
+            ctk.CTkLabel(
+                box,text=value,
+                font=("Arial",20,"bold")
+            ).pack(anchor="w",padx=15,pady=(0,15))
 
         if low:
-            tk.Label(
-                self.root,
-                text=f"Warning: {low} product(s) have low stock.",
-                bg="#0f172a",
-                fg="#f87171",
-                font=("Arial", 12, "bold")
-            ).pack(pady=10)
+            ctk.CTkLabel(
+                frame,
+                text=f"Warning: {low} product(s) have low stock",
+                text_color="#f87171",
+                font=("Arial",14,"bold")
+            ).pack(anchor="w",padx=25,pady=10)
 
-        tk.Label(
-            self.root,
+        ctk.CTkLabel(
+            frame,
             text=f"Total units sold: {units}",
-            bg="#0f172a",
-            fg="#94a3b8"
-        ).pack()
+            text_color="#94a3b8"
+        ).pack(anchor="w",padx=25)
 
     def inventory(self):
         self.clear()
         self.menu()
-        self.heading("Inventory Management")
 
-        top = tk.Frame(self.root, bg="#0f172a")
-        top.pack(fill="x", padx=30)
+        frame=ctk.CTkScrollableFrame(self.root)
+        frame.pack(fill="both",expand=True)
 
-        manual = tk.LabelFrame(
-            top,
-            text="Add Product Manually",
-            bg="#1e293b",
-            fg="white",
-            padx=15,
-            pady=10
-        )
-        manual.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=5
-        )
+        ctk.CTkLabel(
+            frame,
+            text="Inventory Management",
+            font=("Arial",28,"bold")
+        ).pack(anchor="w",padx=25,pady=25)
 
-        name = self.entry(manual, "Product Name")
-        cost = self.entry(manual, "Buying Cost")
-        price = self.entry(manual, "Selling Price")
-        quantity = self.entry(manual, "Quantity")
-        expiry = self.entry(manual, "Expiry Date YYYY-MM-DD")
+        add=ctk.CTkFrame(frame,fg_color=CARD)
+        add.pack(fill="x",padx=25,pady=5)
 
-        def add():
+        ctk.CTkLabel(
+            add,text="Add Product",
+            font=("Arial",19,"bold")
+        ).pack(anchor="w",padx=20,pady=15)
+
+        name=ctk.CTkEntry(add,placeholder_text="Product Name")
+        name.pack(fill="x",padx=20,pady=6)
+
+        cost=ctk.CTkEntry(add,placeholder_text="Buying Cost")
+        cost.pack(fill="x",padx=20,pady=6)
+
+        price=ctk.CTkEntry(add,placeholder_text="Selling Price")
+        price.pack(fill="x",padx=20,pady=6)
+
+        quantity=ctk.CTkEntry(add,placeholder_text="Quantity")
+        quantity.pack(fill="x",padx=20,pady=6)
+
+        expiry=ctk.CTkEntry(add,placeholder_text="Expiry YYYY-MM-DD")
+        expiry.pack(fill="x",padx=20,pady=6)
+
+        def add_product():
             try:
-                product_name = name.get().strip()
-                buy = float(cost.get())
-                sell = float(price.get())
-                qty = int(quantity.get())
-                exp = expiry.get().strip() or None
+                n=name.get().strip()
+                co=float(cost.get())
+                pr=float(price.get())
+                q=int(quantity.get())
+                ex=expiry.get().strip() or None
 
-                if not product_name:
+                if not n or co<0 or pr<0 or q<=0:
                     raise ValueError
 
-                if buy < 0 or sell < 0 or qty <= 0:
-                    raise ValueError
+                db=get_connection()
+                cur=db.cursor()
 
-                c = connect()
-                q = c.cursor()
-
-                q.execute(
+                cur.execute(
                     """
                     INSERT INTO products
                     (user_id,name,cost,price,quantity,stock,expiry)
                     VALUES(%s,%s,%s,%s,%s,%s,%s)
                     """,
-                    (
-                        self.user_id,
-                        product_name,
-                        buy,
-                        sell,
-                        qty,
-                        qty,
-                        exp
-                    )
+                    (self.user["id"],n,co,pr,q,q,ex)
                 )
 
-                c.commit()
-                q.close()
-                c.close()
+                db.commit()
+                cur.close()
+                db.close()
 
-                messagebox.showinfo(
-                    "Success",
-                    "Product added successfully."
-                )
-
+                messagebox.showinfo("Inventory","Product added")
                 self.inventory()
 
             except Exception:
-                messagebox.showerror(
-                    "Error",
-                    "Enter valid product details."
-                )
+                messagebox.showerror("Error","Invalid product details")
 
-        self.button(manual, "Add Product", add)
+        ctk.CTkButton(
+            add,text="Add Product",command=add_product
+        ).pack(padx=20,pady=15)
 
-        csv_box = tk.LabelFrame(
-            top,
+        csvbox=ctk.CTkFrame(frame,fg_color=CARD)
+        csvbox.pack(fill="x",padx=25,pady=15)
+
+        ctk.CTkLabel(
+            csvbox,
             text="CSV Import",
-            bg="#1e293b",
-            fg="white",
-            padx=15,
-            pady=15
-        )
-        csv_box.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=5
-        )
+            font=("Arial",19,"bold")
+        ).pack(anchor="w",padx=20,pady=15)
 
-        tk.Label(
-            csv_box,
-            text="Required columns:",
-            bg="#1e293b",
-            fg="white"
-        ).pack(anchor="w")
-
-        tk.Label(
-            csv_box,
+        ctk.CTkLabel(
+            csvbox,
             text="product_name, cost, price, quantity, expiry_date",
-            bg="#1e293b",
-            fg="#94a3b8",
-            wraplength=280
-        ).pack(anchor="w", pady=15)
+            text_color="#94a3b8"
+        ).pack(anchor="w",padx=20)
 
-        self.button(
-            csv_box,
-            "Import CSV",
-            self.import_csv
+        ctk.CTkButton(
+            csvbox,text="Import CSV",command=self.import_csv
+        ).pack(anchor="w",padx=20,pady=15)
+
+        table=ctk.CTkFrame(frame,fg_color=CARD)
+        table.pack(fill="both",expand=True,padx=25,pady=10)
+
+        for i,x in enumerate(
+            ["Product","Cost","Price","Stock","Expiry","Status"]
+        ):
+            ctk.CTkLabel(
+                table,text=x,text_color="#94a3b8"
+            ).grid(row=0,column=i,padx=15,pady=12,sticky="w")
+
+        db=get_connection()
+        cur=db.cursor(dictionary=True)
+        cur.execute(
+            "SELECT * FROM products WHERE user_id=%s ORDER BY name",
+            (self.user["id"],)
         )
 
-        tk.Label(
-            self.root,
-            text="Current Inventory",
-            bg="#0f172a",
-            fg="white",
-            font=("Arial", 17, "bold")
-        ).pack(
-            anchor="w",
-            padx=35,
-            pady=(20, 5)
-        )
+        for r,p in enumerate(cur.fetchall(),1):
+            values=[
+                p["name"],
+                self.money(p["cost"]),
+                self.money(p["price"]),
+                p["stock"],
+                p["expiry"] or "-",
+                "LOW" if p["stock"]<=5 else "OK"
+            ]
 
-        frame = tk.Frame(self.root, bg="#0f172a")
-        frame.pack(
-            fill="both",
-            expand=True,
-            padx=30,
-            pady=5
-        )
+            for i,v in enumerate(values):
+                ctk.CTkLabel(
+                    table,text=str(v),
+                    text_color="#f87171" if v=="LOW" else "white"
+                ).grid(row=r,column=i,padx=15,pady=8,sticky="w")
 
-        columns = (
-            "id",
-            "name",
-            "cost",
-            "price",
-            "stock",
-            "expiry"
-        )
-
-        table = ttk.Treeview(
-            frame,
-            columns=columns,
-            show="headings"
-        )
-
-        headings = [
-            ("id", "ID"),
-            ("name", "Product"),
-            ("cost", "Cost"),
-            ("price", "Price"),
-            ("stock", "Stock"),
-            ("expiry", "Expiry")
-        ]
-
-        for col, text in headings:
-            table.heading(col, text=text)
-            table.column(col, width=120)
-
-        scroll = ttk.Scrollbar(
-            frame,
-            orient="vertical",
-            command=table.yview
-        )
-
-        table.configure(yscrollcommand=scroll.set)
-
-        table.pack(
-            side="left",
-            fill="both",
-            expand=True
-        )
-
-        scroll.pack(
-            side="right",
-            fill="y"
-        )
-
-        c = connect()
-        q = c.cursor()
-
-        q.execute(
-            """
-            SELECT id,name,cost,price,stock,expiry
-            FROM products
-            WHERE user_id=%s
-            ORDER BY name
-            """,
-            (self.user_id,)
-        )
-
-        for row in q.fetchall():
-            table.insert("", "end", values=row)
-
-        q.close()
-        c.close()
+        cur.close()
+        db.close()
 
     def import_csv(self):
-        file = filedialog.askopenfilename(
-            title="Choose CSV File",
-            filetypes=[("CSV Files", "*.csv")]
+        file=filedialog.askopenfilename(
+            filetypes=[("CSV Files","*.csv")]
         )
 
         if not file:
             return
 
         try:
-            c = connect()
-            q = c.cursor()
-            count = 0
+            db=get_connection()
+            cur=db.cursor()
+            count=0
 
             with open(
-                file,
-                "r",
-                newline="",
-                encoding="utf-8-sig"
+                file,"r",encoding="utf-8-sig",newline=""
             ) as f:
+                reader=csv.DictReader(f)
 
-                reader = csv.DictReader(f)
-
-                headers = [
-                    x.strip().lower()
-                    for x in reader.fieldnames or []
-                ]
-
-                required = [
+                required=[
                     "product_name",
                     "cost",
                     "price",
                     "quantity"
                 ]
 
+                headers=[
+                    x.strip().lower()
+                    for x in reader.fieldnames or []
+                ]
+
                 if not all(x in headers for x in required):
                     raise ValueError
 
                 for row in reader:
-                    row = {
-                        k.strip().lower(): v.strip()
-                        for k, v in row.items()
+                    row={
+                        k.strip().lower():v.strip()
+                        for k,v in row.items()
                     }
 
-                    name = row["product_name"]
-                    cost = float(row["cost"])
-                    price = float(row["price"])
-                    quantity = int(row["quantity"])
-                    expiry = row.get(
-                        "expiry_date",
-                        ""
-                    ).strip() or None
+                    n=row["product_name"]
+                    co=float(row["cost"])
+                    pr=float(row["price"])
+                    q=int(row["quantity"])
+                    ex=row.get("expiry_date") or None
 
-                    if not name:
+                    if not n or co<0 or pr<0 or q<=0:
                         raise ValueError
 
-                    if cost < 0 or price < 0 or quantity <= 0:
-                        raise ValueError
-
-                    q.execute(
+                    cur.execute(
                         """
                         INSERT INTO products
                         (user_id,name,cost,price,quantity,stock,expiry)
                         VALUES(%s,%s,%s,%s,%s,%s,%s)
                         """,
-                        (
-                            self.user_id,
-                            name,
-                            cost,
-                            price,
-                            quantity,
-                            quantity,
-                            expiry
-                        )
+                        (self.user["id"],n,co,pr,q,q,ex)
                     )
 
-                    count += 1
+                    count+=1
 
-            c.commit()
-            q.close()
-            c.close()
+            db.commit()
+            cur.close()
+            db.close()
 
             messagebox.showinfo(
                 "CSV Import",
-                f"{count} product(s) imported successfully."
+                f"{count} products imported"
             )
 
             self.inventory()
 
         except Exception:
             try:
-                c.rollback()
-                q.close()
-                c.close()
+                db.rollback()
+                cur.close()
+                db.close()
             except:
                 pass
 
             messagebox.showerror(
                 "CSV Import",
-                "CSV file is invalid."
+                "Invalid CSV file"
             )
 
     def sales(self):
         self.clear()
         self.menu()
-        self.heading("Sales Management")
 
-        c = connect()
-        q = c.cursor(dictionary=True)
+        frame=ctk.CTkScrollableFrame(self.root)
+        frame.pack(fill="both",expand=True)
 
-        q.execute(
+        ctk.CTkLabel(
+            frame,
+            text="Sales Management",
+            font=("Arial",28,"bold")
+        ).pack(anchor="w",padx=25,pady=25)
+
+        db=get_connection()
+        cur=db.cursor(dictionary=True)
+
+        cur.execute(
             """
             SELECT * FROM products
             WHERE user_id=%s AND stock>0
             ORDER BY name
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
 
-        products = q.fetchall()
+        products=cur.fetchall()
 
-        q.close()
-        c.close()
+        cur.close()
+        db.close()
 
-        if not products:
-            tk.Label(
-                self.root,
-                text="No products available for sale.",
-                bg="#0f172a",
-                fg="#94a3b8",
-                font=("Arial", 13)
-            ).pack(pady=40)
+        box=ctk.CTkFrame(frame,fg_color=CARD)
+        box.pack(fill="x",padx=25,pady=5)
 
-            return
-
-        box = tk.Frame(
-            self.root,
-            bg="#1e293b",
-            padx=25,
-            pady=20
-        )
-        box.pack(
-            fill="x",
-            padx=100,
-            pady=20
-        )
-
-        tk.Label(
-            box,
-            text="Select Product",
-            bg="#1e293b",
-            fg="white"
-        ).pack(anchor="w")
-
-        product = tk.StringVar()
-
-        values = [
-            f"{p['id']} - {p['name']} - Stock: {p['stock']}"
+        names=[
+            f"{p['id']} - {p['name']} - Stock {p['stock']}"
             for p in products
         ]
 
-        combo = ttk.Combobox(
+        product=ctk.CTkComboBox(
             box,
-            textvariable=product,
-            values=values,
-            state="readonly"
+            values=names,
+            width=500
         )
-        combo.pack(
-            fill="x",
-            pady=8
-        )
+        product.pack(anchor="w",padx=20,pady=20)
 
-        tk.Label(
+        units=ctk.CTkEntry(
             box,
-            text="Units Sold",
-            bg="#1e293b",
-            fg="white"
-        ).pack(anchor="w")
-
-        units = tk.Entry(
-            box,
-            bg="#0f172a",
-            fg="white",
-            insertbackground="white",
-            relief="flat"
+            placeholder_text="Units Sold",
+            width=500
         )
-        units.pack(
-            fill="x",
-            ipady=7,
-            pady=8
-        )
+        units.pack(anchor="w",padx=20,pady=10)
 
-        def record():
+        def sell():
             try:
                 if not product.get():
                     raise ValueError
 
-                pid = int(product.get().split()[0])
-                amount = int(units.get())
+                pid=int(product.get().split("-")[0])
+                amount=int(units.get())
 
-                if amount <= 0:
+                if amount<=0:
                     raise ValueError
 
-                c = connect()
-                q = c.cursor(dictionary=True)
+                db=get_connection()
+                cur=db.cursor(dictionary=True)
 
-                q.execute(
+                cur.execute(
                     """
                     SELECT * FROM products
                     WHERE id=%s AND user_id=%s
                     FOR UPDATE
                     """,
-                    (pid, self.user_id)
+                    (pid,self.user["id"])
                 )
 
-                p = q.fetchone()
+                p=cur.fetchone()
 
-                if not p or amount > p["stock"]:
+                if not p or amount>p["stock"]:
                     raise ValueError
 
-                q.execute(
+                cur.execute(
                     """
                     INSERT INTO sales
-                    (user_id,product_id,product_name,
-                     units,price,cost,sale_date)
+                    (user_id,product_id,product_name,units,price,cost,sale_date)
                     VALUES(%s,%s,%s,%s,%s,%s,CURDATE())
                     """,
                     (
-                        self.user_id,
+                        self.user["id"],
                         p["id"],
                         p["name"],
                         amount,
@@ -967,135 +620,104 @@ class ShopSight:
                     )
                 )
 
-                q.execute(
+                cur.execute(
                     """
                     UPDATE products
                     SET stock=stock-%s
-                    WHERE id=%s AND user_id=%s
+                    WHERE id=%s
                     """,
-                    (
-                        amount,
-                        p["id"],
-                        self.user_id
-                    )
+                    (amount,pid)
                 )
 
-                c.commit()
-                q.close()
-                c.close()
+                db.commit()
+                cur.close()
+                db.close()
 
-                messagebox.showinfo(
-                    "Sale",
-                    "Sale recorded and stock updated."
-                )
-
+                messagebox.showinfo("Sales","Sale recorded")
                 self.sales()
 
             except Exception:
                 try:
-                    c.rollback()
-                    q.close()
-                    c.close()
+                    db.rollback()
+                    cur.close()
+                    db.close()
                 except:
                     pass
 
                 messagebox.showerror(
-                    "Sale",
-                    "Invalid sale or insufficient stock."
+                    "Sales",
+                    "Invalid sale or insufficient stock"
                 )
 
-        self.button(
-            box,
-            "Record Sale",
-            record
-        )
+        ctk.CTkButton(
+            box,text="Record Sale",command=sell
+        ).pack(anchor="w",padx=20,pady=15)
 
-        tk.Label(
-            self.root,
+        ctk.CTkLabel(
+            frame,
             text="Recent Sales",
-            bg="#0f172a",
-            fg="white",
-            font=("Arial", 17, "bold")
-        ).pack(
-            anchor="w",
-            padx=30,
-            pady=10
-        )
+            font=("Arial",20,"bold")
+        ).pack(anchor="w",padx=25,pady=20)
 
-        table = ttk.Treeview(
-            self.root,
-            columns=(
-                "date",
-                "product",
-                "units",
-                "sale",
-                "profit"
-            ),
-            show="headings"
-        )
+        table=ctk.CTkFrame(frame,fg_color=CARD)
+        table.pack(fill="both",expand=True,padx=25)
 
-        for col, text in [
-            ("date", "Date"),
-            ("product", "Product"),
-            ("units", "Units"),
-            ("sale", "Sale"),
-            ("profit", "Profit")
-        ]:
-            table.heading(col, text=text)
-            table.column(col, width=150)
+        for i,x in enumerate(
+            ["Date","Product","Units","Sale","Profit"]
+        ):
+            ctk.CTkLabel(
+                table,text=x,text_color="#94a3b8"
+            ).grid(row=0,column=i,padx=15,pady=12,sticky="w")
 
-        table.pack(
-            fill="both",
-            expand=True,
-            padx=30,
-            pady=5
-        )
+        db=get_connection()
+        cur=db.cursor(dictionary=True)
 
-        c = connect()
-        q = c.cursor(dictionary=True)
-
-        q.execute(
+        cur.execute(
             """
             SELECT * FROM sales
             WHERE user_id=%s
-            ORDER BY id DESC
-            LIMIT 50
+            ORDER BY id DESC LIMIT 50
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
 
-        for sale in q.fetchall():
-            total = float(sale["price"]) * sale["units"]
+        for r,s in enumerate(cur.fetchall(),1):
+            total=float(s["price"])*s["units"]
+            profit=(float(s["price"])-float(s["cost"]))*s["units"]
 
-            profit = (
-                float(sale["price"]) -
-                float(sale["cost"])
-            ) * sale["units"]
+            values=[
+                s["sale_date"],
+                s["product_name"],
+                s["units"],
+                self.money(total),
+                self.money(profit)
+            ]
 
-            table.insert(
-                "",
-                "end",
-                values=(
-                    sale["sale_date"],
-                    sale["product_name"],
-                    sale["units"],
-                    self.money(total),
-                    self.money(profit)
-                )
-            )
+            for i,v in enumerate(values):
+                ctk.CTkLabel(
+                    table,text=str(v)
+                ).grid(row=r,column=i,padx=15,pady=8,sticky="w")
 
-        q.close()
-        c.close()
+        cur.close()
+        db.close()
 
     def analytics(self):
         self.clear()
         self.menu()
-        self.heading("Business Analytics")
 
-        c = connect()
-        q = c.cursor(dictionary=True)
+        frame=ctk.CTkScrollableFrame(self.root)
+        frame.pack(fill="both",expand=True)
 
-        q.execute(
+        ctk.CTkLabel(
+            frame,
+            text="Business Analytics",
+            font=("Arial",28,"bold")
+        ).pack(anchor="w",padx=25,pady=25)
+
+        db=get_connection()
+        cur=db.cursor(dictionary=True)
+
+        cur.execute(
             """
             SELECT
             COALESCE(SUM(units*price),0) revenue,
@@ -1104,133 +726,115 @@ class ShopSight:
             FROM sales
             WHERE user_id=%s
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
 
-        stats = q.fetchone()
+        stats=cur.fetchone()
 
-        q.execute(
+        cur.execute(
             """
-            SELECT
-            product_name,
-            SUM(units) units,
-            SUM((price-cost)*units) profit
+            SELECT product_name,
+                   SUM((price-cost)*units) profit
             FROM sales
             WHERE user_id=%s
             GROUP BY product_id,product_name
             ORDER BY profit DESC
             """,
-            (self.user_id,)
+            (self.user["id"],)
         )
 
-        products = q.fetchall()
+        products=cur.fetchall()
 
-        q.close()
-        c.close()
-
-        frame = tk.Frame(
-            self.root,
-            bg="#0f172a"
-        )
-        frame.pack(
-            fill="x",
-            padx=30,
-            pady=20
-        )
-
-        cards = [
-            ("Revenue", self.money(stats["revenue"])),
-            ("Profit", self.money(stats["profit"])),
-            ("Units Sold", stats["units"])
-        ]
-
-        for name, value in cards:
-            card = tk.Frame(
-                frame,
-                bg="#1e293b",
-                padx=20,
-                pady=18
-            )
-
-            card.pack(
-                side="left",
-                fill="both",
-                expand=True,
-                padx=5
-            )
-
-            tk.Label(
-                card,
-                text=name,
-                bg="#1e293b",
-                fg="#94a3b8"
-            ).pack()
-
-            tk.Label(
-                card,
-                text=value,
-                bg="#1e293b",
-                fg="white",
-                font=("Arial", 19, "bold")
-            ).pack(pady=8)
-
-        tk.Label(
-            self.root,
-            text="Product Performance",
-            bg="#0f172a",
-            fg="white",
-            font=("Arial", 17, "bold")
-        ).pack(
-            anchor="w",
-            padx=30,
-            pady=10
+        cur.execute(
+            """
+            SELECT sale_date,
+                   SUM((price-cost)*units) profit
+            FROM sales
+            WHERE user_id=%s
+            GROUP BY sale_date
+            ORDER BY sale_date
+            """,
+            (self.user["id"],)
         )
 
-        table = ttk.Treeview(
-            self.root,
-            columns=("product", "units", "profit"),
-            show="headings"
-        )
+        daily=cur.fetchall()
 
-        for col, text in [
-            ("product", "Product"),
-            ("units", "Units Sold"),
-            ("profit", "Profit")
+        cur.close()
+        db.close()
+
+        cards=ctk.CTkFrame(frame,fg_color="transparent")
+        cards.pack(fill="x",padx=20,pady=10)
+
+        for n,v in [
+            ("Revenue",self.money(stats["revenue"])),
+            ("Profit",self.money(stats["profit"])),
+            ("Units Sold",stats["units"])
         ]:
-            table.heading(col, text=text)
-            table.column(col, width=200)
+            box=ctk.CTkFrame(cards,fg_color=CARD)
+            box.pack(side="left",fill="both",expand=True,padx=5)
 
-        table.pack(
-            fill="both",
-            expand=True,
-            padx=30
+            ctk.CTkLabel(
+                box,text=n,text_color="#94a3b8"
+            ).pack(pady=(15,3))
+
+            ctk.CTkLabel(
+                box,text=str(v),
+                font=("Arial",20,"bold")
+            ).pack(pady=(0,15))
+
+        charts=ctk.CTkFrame(frame,fg_color="transparent")
+        charts.pack(fill="both",expand=True,padx=25,pady=20)
+
+        self.chart(
+            charts,
+            "Profit By Product",
+            [x["product_name"] for x in products],
+            [float(x["profit"]) for x in products],
+            True
         )
 
-        for p in products:
-            table.insert(
-                "",
-                "end",
-                values=(
-                    p["product_name"],
-                    p["units"],
-                    self.money(p["profit"])
-                )
-            )
+        self.chart(
+            charts,
+            "Daily Profit",
+            [str(x["sale_date"]) for x in daily],
+            [float(x["profit"]) for x in daily],
+            False
+        )
 
-    def money(self, value):
-        currency = self.business["currency"]
-        return f"{currency} {float(value):,.2f}"
+    def chart(self,parent,title,labels,values,bar):
+        box=ctk.CTkFrame(parent,fg_color=CARD)
+        box.pack(side="left",fill="both",expand=True,padx=5)
 
-    def logout(self):
-        self.user_id = None
-        self.business = None
-        self.login()
+        ctk.CTkLabel(
+            box,text=title,
+            font=("Arial",18,"bold")
+        ).pack(pady=10)
 
+        fig=Figure(figsize=(5,3),dpi=90)
+        ax=fig.add_subplot(111)
 
-try:
-    setup()
-    root = tk.Tk()
-    ShopSight(root)
-    root.mainloop()
-except Exception as e:
-    print("Could not start ShopSight:", e)
+        if values:
+            if bar:
+                ax.bar(labels,values)
+            else:
+                ax.plot(labels,values,marker="o")
+
+            ax.tick_params(axis="x",rotation=45)
+            ax.set_ylabel(self.business["currency"])
+            ax.grid(axis="y",alpha=.2)
+        else:
+            ax.text(.5,.5,"No sales yet",ha="center",va="center")
+            ax.set_axis_off()
+
+        fig.tight_layout()
+
+        canvas=FigureCanvasTkAgg(fig,master=box)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both",expand=True,padx=10,pady=10)
+
+    def money(self,value):
+        return f"{self.business['currency']} {float(value):,.2f}"
+
+root=ctk.CTk()
+App(root)
+root.mainloop()
